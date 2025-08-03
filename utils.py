@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import schedule
 import time
+import threading
 
 def export_files(df):
     csv = df.to_csv(index=False)
@@ -20,7 +21,13 @@ def schedule_off_peak():
     def job():
         # Placeholder: Run full processing (call functions from other files)
         st.write("Running off-peak job...")
+    
     schedule.every().day.at("22:00").do(job)  # 10 PM IST
-    while True:
-        schedule.run_pending()
-        time.sleep(60)  # Check every minute; use threading in production
+    
+    def run_scheduler():
+        while True:
+            schedule.run_pending()
+            time.sleep(60)  # Check every minute
+    
+    threading.Thread(target=run_scheduler, daemon=True).start()
+    st.write("Scheduler started for off-peak.")
