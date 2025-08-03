@@ -1,7 +1,6 @@
 streamlit
 python-docx
 pymupdf
-spacy
 openai
 sentence-transformers
 pandas
