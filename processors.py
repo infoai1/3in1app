@@ -4,7 +4,9 @@ from sentence_transformers import SentenceTransformer
 import pandas as pd
 
 nlp = spacy.load("en_core_web_sm")
-client = OpenAI(base_url="https://api.deepseek.com/v1", api_key="your_deepseek_api_key")  # Update for DeepSeek
+# Manually paste your DeepSeek R1 API key here
+api_key = "paste_your_deepseek_r1_api_key_here"  # Replace with your copied API key
+client = OpenAI(base_url="https://api.deepseek.com/v1", api_key=api_key)
 embedder = SentenceTransformer('all-MiniLM-L6-v2')
 
 def chunk_text(text, structure, chunk_size=250):
@@ -37,10 +39,10 @@ def extract_metadata(df):
         refs = [ent.text for ent in doc.ents if ent.label_ in ["PERSON", "DATE", "EVENT", "WORK_OF_ART"]]  # Includes book quotes
         df.at[i, "references"] = refs
         
-        # DeepSeek R1 for themes and question-style summary
+        # DeepSeek R1 for themes and question-style summary (using reasoning model)
         try:
             response = client.chat.completions.create(
-                model="deepseek-chat",  # Or R1
+                model="deepseek-chat",  # Compatible with R1 reasoning tasks
                 messages=[{"role": "user", "content": f"Extract themes (inspiring, preventing depression, increasing God realization, importance of patience, faith building, moral lessons) and question-style summary/outlines/contexts for: {chunk}"}]
             )
             extracted = response.choices[0].message.content
