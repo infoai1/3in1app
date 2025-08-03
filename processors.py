@@ -3,7 +3,7 @@ from sentence_transformers import SentenceTransformer
 import pandas as pd
 
 # Manually paste your DeepSeek R1 API key here
-api_key = "paste_your_deepseek_r1_api_key_here"  # Replace this text with your actual API key
+api_key = "sk-112d70c0bc7f43edadef276d8251f85e"  # Replace this text with your actual API key
 client = OpenAI(base_url="https://api.deepseek.com/v1", api_key=api_key)
 embedder = SentenceTransformer('all-MiniLM-L6-v2')
 
