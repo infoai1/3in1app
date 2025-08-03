@@ -5,3 +5,5 @@ openai
 sentence-transformers
 pandas
 schedule
+fitz
+re
