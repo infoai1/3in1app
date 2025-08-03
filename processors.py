@@ -5,7 +5,7 @@ import pandas as pd
 
 nlp = spacy.load("en_core_web_sm")
 # Manually paste your DeepSeek R1 API key here
-api_key = "sk-112d70c0bc7f43edadef276d8251f85e"  # Replace with your copied API key
+api_key = "sk-112d70c0bc7f43edadef276d8251f85e"  # Replace this text with your actual API key
 client = OpenAI(base_url="https://api.deepseek.com/v1", api_key=api_key)
 embedder = SentenceTransformer('all-MiniLM-L6-v2')
 
@@ -42,7 +42,7 @@ def extract_metadata(df):
         # DeepSeek R1 for themes and question-style summary (using reasoning model)
         try:
             response = client.chat.completions.create(
-                model="deepseek-chat",  # Compatible with R1 reasoning tasks
+                model="deepseek-chat",  # Compatible with R1 reasoning model
                 messages=[{"role": "user", "content": f"Extract themes (inspiring, preventing depression, increasing God realization, importance of patience, faith building, moral lessons) and question-style summary/outlines/contexts for: {chunk}"}]
             )
             extracted = response.choices[0].message.content
