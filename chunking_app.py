@@ -4,7 +4,7 @@ from docx import Document
 import fitz
 import re
 
-st.title("App 1: Chunking with Custom Heading Detection")
+st.title("App 1: Chunking with Sentence-Boundary Detection")
 
 uploaded_file = st.file_uploader("Upload DOCX/PDF (10-page batch)", type=["docx", "pdf"])
 book_name = st.text_input("Book Name")
@@ -32,9 +32,18 @@ with col3:
     h3_font_size = st.number_input("H3 Font Size", min_value=8, max_value=72, value=16)
     h3_centered = st.checkbox("H3 Centered", value=False)
 
-# Body text settings
-st.write("**Body Text**")
+# Body text and chunking settings
+st.write("**Body Text & Chunking**")
 body_font_size = st.number_input("Body Font Size", min_value=8, max_value=72, value=12)
+chunk_min_words = st.number_input("Min Words per Chunk", min_value=100, max_value=400, value=200)
+chunk_max_words = st.number_input("Max Words per Chunk", min_value=200, max_value=500, value=250)
+overlap_sentences = st.number_input("Overlap Sentences", min_value=1, max_value=5, value=2)
+
+def split_into_sentences(text):
+    # Split on sentence endings (., !, ?) followed by space or end
+    sentence_endings = re.compile(r'(?<=[.!?])\s+')
+    sentences = sentence_endings.split(text.strip())
+    return [s.strip() for s in sentences if s.strip()]
 
 def parse_file_custom(uploaded_file, heading_settings, body_font_size):
     paragraphs = []
@@ -120,24 +129,23 @@ def parse_file_custom(uploaded_file, heading_settings, body_font_size):
     
     return paragraphs, structure
 
-def improved_chunk_text_custom(paragraphs, structure, book_name, author_name, chunk_min=200, chunk_max=250, overlap_ratio=0.2):
+def chunk_by_sentences(paragraphs, structure, book_name, author_name, 
+                      max_words=250, min_words=200, overlap_sentences=2):
     results = []
     current_headings = {1: "", 2: "", 3: ""}
-    buf = []
-    buf_len = 0
-    overlap = []
+    sentence_buffer = []
+    current_word_count = 0
     
     for i, para in enumerate(paragraphs):
         struct_info = structure[i] if i < len(structure) else {"type": "body", "text": para}
         
-        # Handle heading detection
-        if "heading_" in struct_info["type"]:
+        # Handle heading changes
+        if "heading_" in struct_info.get("type", ""):
             level = struct_info["level"]
             
-            # Save current chunk before new heading
-            if buf:
-                if overlap:
-                    buf = overlap + buf
+            # Save current chunk before heading change
+            if sentence_buffer:
+                chunk_text = ' '.join(sentence_buffer)
                 chapter_name = " > ".join([h for h in current_headings.values() if h])
                 results.append({
                     "book_name": book_name,
@@ -146,29 +154,30 @@ def improved_chunk_text_custom(paragraphs, structure, book_name, author_name, ch
                     "heading_1": current_headings[1],
                     "heading_2": current_headings[2],
                     "heading_3": current_headings[3],
-                    "text_chunk": " ".join(buf)
+                    "text_chunk": chunk_text
                 })
             
             # Update heading hierarchy
             current_headings[level] = struct_info["text"]
-            # Clear lower-level headings
             for lower_level in range(level + 1, 4):
                 current_headings[lower_level] = ""
             
-            buf = []
-            buf_len = 0
-            overlap = []
+            sentence_buffer = []
+            current_word_count = 0
             continue
         
-        # Process body text
-        words = para.split()
-        num_words = len(words)
+        # Process body text by sentences
+        para_sentences = split_into_sentences(para)
         
-        if num_words > chunk_max:
-            # Save current buffer first
-            if buf:
-                if overlap:
-                    buf = overlap + buf
+        for sentence in para_sentences:
+            sentence_words = len(sentence.split())
+            
+            # If adding this sentence exceeds max_words and we have min_words
+            if (current_word_count + sentence_words > max_words and 
+                current_word_count >= min_words):
+                
+                # Save current chunk
+                chunk_text = ' '.join(sentence_buffer)
                 chapter_name = " > ".join([h for h in current_headings.values() if h])
                 results.append({
                     "book_name": book_name,
@@ -177,53 +186,25 @@ def improved_chunk_text_custom(paragraphs, structure, book_name, author_name, ch
                     "heading_1": current_headings[1],
                     "heading_2": current_headings[2],
                     "heading_3": current_headings[3],
-                    "text_chunk": " ".join(buf)
+                    "text_chunk": chunk_text
                 })
-                buf = []
-                buf_len = 0
-            
-            # This para becomes its own chunk
-            chapter_name = " > ".join([h for h in current_headings.values() if h])
-            results.append({
-                "book_name": book_name,
-                "author_name": author_name,
-                "chapter_name": chapter_name,
-                "heading_1": current_headings[1],
-                "heading_2": current_headings[2],
-                "heading_3": current_headings[3],
-                "text_chunk": para
-            })
-            
-            # Set up overlap for next chunk
-            overlap_count = int(chunk_max * overlap_ratio)
-            overlap = words[-overlap_count:] if overlap_count > 0 else []
-            continue
-        
-        # Add to buffer
-        buf += words
-        buf_len += num_words
-        
-        if buf_len >= chunk_min:
-            # Save chunk
-            chapter_name = " > ".join([h for h in current_headings.values() if h])
-            results.append({
-                "book_name": book_name,
-                "author_name": author_name,
-                "chapter_name": chapter_name,
-                "heading_1": current_headings[1],
-                "heading_2": current_headings[2],
-                "heading_3": current_headings[3],
-                "text_chunk": " ".join(buf)
-            })
-            
-            # Set up overlap for next chunk
-            overlap_count = int(chunk_max * overlap_ratio)
-            overlap = buf[-overlap_count:] if overlap_count > 0 else []
-            buf = overlap.copy()
-            buf_len = len(buf)
+                
+                # Start new chunk with overlap (last N sentences)
+                if len(sentence_buffer) > overlap_sentences:
+                    overlap_buffer = sentence_buffer[-overlap_sentences:]
+                else:
+                    overlap_buffer = sentence_buffer[:]
+                
+                sentence_buffer = overlap_buffer + [sentence]
+                current_word_count = sum(len(s.split()) for s in sentence_buffer)
+            else:
+                # Add sentence to current chunk
+                sentence_buffer.append(sentence)
+                current_word_count += sentence_words
     
     # Save final chunk
-    if buf:
+    if sentence_buffer:
+        chunk_text = ' '.join(sentence_buffer)
         chapter_name = " > ".join([h for h in current_headings.values() if h])
         results.append({
             "book_name": book_name,
@@ -232,7 +213,7 @@ def improved_chunk_text_custom(paragraphs, structure, book_name, author_name, ch
             "heading_1": current_headings[1],
             "heading_2": current_headings[2],
             "heading_3": current_headings[3],
-            "text_chunk": " ".join(buf)
+            "text_chunk": chunk_text
         })
     
     return results
@@ -264,20 +245,28 @@ if uploaded_file and book_name and author_name:
             alignment = "Centered" if settings['centered'] else "Left-aligned"
             st.write(f"• Heading {level}: {settings['font_size']}pt, {alignment}")
     st.write(f"• Body text: {body_font_size}pt")
+    st.write(f"• Chunk size: {chunk_min_words}-{chunk_max_words} words")
+    st.write(f"• Sentence overlap: {overlap_sentences} sentences")
     
-    if st.button("Chunk and Export CSV"):
-        chunks = improved_chunk_text_custom(paragraphs, structure, book_name, author_name)
+    if st.button("Chunk by Sentences and Export CSV"):
+        chunks = chunk_by_sentences(paragraphs, structure, book_name, author_name, 
+                                  chunk_max_words, chunk_min_words, overlap_sentences)
         df = pd.DataFrame(chunks)
         
         # Display preview
-        st.write(f"**Generated {len(chunks)} chunks**")
+        st.write(f"**Generated {len(chunks)} sentence-boundary chunks**")
         st.dataframe(df.head())
+        
+        # Show sample chunk to verify sentence boundaries
+        if len(chunks) > 0:
+            st.write("**Sample Chunk (check sentence boundaries):**")
+            st.write(f"'{chunks[0]['text_chunk']}'")
         
         # Export CSV
         csv = df.to_csv(index=False).encode('utf-8')
         st.download_button(
-            "Download Custom Chunks CSV",
+            "Download Sentence-Chunked CSV",
             csv,
-            "custom_chunks.csv",
+            "sentence_chunks.csv",
             "text/csv"
         )
