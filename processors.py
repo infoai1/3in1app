@@ -38,11 +38,14 @@ def extract_metadata(df):
         df.at[i, "references"] = refs
         
         # DeepSeek R1 for themes and question-style summary
-        response = client.chat.completions.create(
-            model="deepseek-chat",  # Or R1
-            messages=[{"role": "user", "content": f"Extract themes (inspiring, preventing depression, increasing God realization, importance of patience, faith building, moral lessons) and question-style summary/outlines/contexts for: {chunk}"}]
-        )
-        extracted = response.choices[0].message.content
+        try:
+            response = client.chat.completions.create(
+                model="deepseek-chat",  # Or R1
+                messages=[{"role": "user", "content": f"Extract themes (inspiring, preventing depression, increasing God realization, importance of patience, faith building, moral lessons) and question-style summary/outlines/contexts for: {chunk}"}]
+            )
+            extracted = response.choices[0].message.content
+        except Exception as e:
+            extracted = f"Error: {str(e)}"
         df.at[i, "themes"] = extracted  # E.g., "inspiring: Boosts faith"
         df.at[i, "summary"] = "Question-style: " + extracted
     return df
