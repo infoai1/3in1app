@@ -5,7 +5,7 @@ import pandas as pd
 
 nlp = spacy.load("en_core_web_sm")
 # Manually paste your DeepSeek R1 API key here
-api_key = "paste_your_deepseek_r1_api_key_here"  # Replace with your copied API key
+api_key = "sk-112d70c0bc7f43edadef276d8251f85e"  # Replace with your copied API key
 client = OpenAI(base_url="https://api.deepseek.com/v1", api_key=api_key)
 embedder = SentenceTransformer('all-MiniLM-L6-v2')
 
