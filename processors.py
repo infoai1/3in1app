@@ -1,11 +1,9 @@
-import spacy
 from openai import OpenAI
 from sentence_transformers import SentenceTransformer
 import pandas as pd
 
-nlp = spacy.load("en_core_web_sm")
 # Manually paste your DeepSeek R1 API key here
-api_key = "sk-112d70c0bc7f43edadef276d8251f85e"  # Replace this text with your actual API key
+api_key = "paste_your_deepseek_r1_api_key_here"  # Replace this text with your actual API key
 client = OpenAI(base_url="https://api.deepseek.com/v1", api_key=api_key)
 embedder = SentenceTransformer('all-MiniLM-L6-v2')
 
@@ -34,25 +32,19 @@ def chunk_text(text, structure, chunk_size=250):
 
 def extract_metadata(df):
     for i, chunk in enumerate(df["chunk_text"]):
-        # spaCy NER for references
-        doc = nlp(chunk)
-        refs = [ent.text for ent in doc.ents if ent.label_ in ["PERSON", "DATE", "EVENT", "WORK_OF_ART"]]  # Includes book quotes
-        df.at[i, "references"] = refs
-        
-        # DeepSeek R1 for themes and question-style summary (using reasoning model)
+        # DeepSeek prompt for references, themes, summaries, outlines, contexts
         try:
             response = client.chat.completions.create(
                 model="deepseek-chat",  # Compatible with R1 reasoning model
-                messages=[{"role": "user", "content": f"Extract themes (inspiring, preventing depression, increasing God realization, importance of patience, faith building, moral lessons) and question-style summary/outlines/contexts for: {chunk}"}]
+                messages=[{"role": "user", "content": f"Extract references (Quran verses, Hadith, names, dates, events, quotes from other books), themes (inspiring, preventing depression, increasing God realization, importance of patience, faith building, moral lessons), and question-style summaries/outlines/contexts that clarify aspects, remove misinterpretations, and link to God's creation plan for: {chunk}"}]
             )
             extracted = response.choices[0].message.content
         except Exception as e:
             extracted = f"Error: {str(e)}"
-        df.at[i, "themes"] = extracted  # E.g., "inspiring: Boosts faith"
-        df.at[i, "summary"] = "Question-style: " + extracted
+        df.at[i, "extracted_data"] = extracted  # All in one field; parse if needed (e.g., split into refs/themes/summary)
     return df
 
 def generate_embeddings(df):
-    df["combined"] = df["chunk_text"] + " " + df["themes"] + " " + df["summary"] + " " + str(df["references"])
+    df["combined"] = df["chunk_text"] + " " + df["extracted_data"]
     df["embedding"] = df["combined"].apply(lambda x: embedder.encode(x))
     return df
