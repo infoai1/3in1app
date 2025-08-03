@@ -13,7 +13,7 @@ def export_files(df):
     st.download_button("Download Main JSON", main_json, "main.json")
     
     # Refs JSON: Dedicated for references/footnotes
-    refs_df = pd.DataFrame({"references": df["references"]})  # Expand with more logic if needed
+    refs_df = pd.DataFrame({"extracted_data": df["extracted_data"]})  # Expand with more logic if needed
     refs_json = refs_df.to_json(orient="records")
     st.download_button("Download Refs JSON", refs_json, "refs.json")
 
