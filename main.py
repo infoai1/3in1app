@@ -6,7 +6,7 @@ import pandas as pd
 
 st.title("Islamic Book Processor App")
 
-# Font size sliders
+# Font size sliders for custom detection
 body_font_threshold = st.slider("Body Font Threshold (pt)", 8, 16, 12)
 heading_font_threshold = st.slider("Heading Font Threshold (pt)", 12, 24, 14)
 
@@ -33,7 +33,6 @@ if st.button("Schedule for Off-Peak"):
 st.header("Test Chatbot on Topic")
 test_query = st.text_input("Enter query (e.g., patience preventing depression)")
 if st.button("Test"):
-    # Simple simulation: Search df for matches
     if 'df' in st.session_state:
         results = st.session_state.df[st.session_state.df['chunk_text'].str.contains(test_query, case=False)]
         st.write("Sample Results:", results[['chunk_text', 'themes', 'references']])
