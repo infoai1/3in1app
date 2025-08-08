@@ -1,96 +1,47 @@
 import streamlit as st
 import pandas as pd
-from parsers import parse_file_advanced
-from chunker import improved_chunk_text_sentences
+from parsers import detect_headers_and_text
+from chunker import create_csv_data
+from io import BytesIO
 
-st.title("Advanced Islamic Book Chunking App")
+st.title("📚 DOCX to CSV Chapter Chunker")
 
-# Header Detection Controls
-st.sidebar.header("🎯 Detection Settings")
-enable_auto_detect = st.sidebar.checkbox("Enable Auto-Detection (Recommended for subtle headers)", value=True)
-enable_centered = st.sidebar.checkbox("Detect Centered Text", value=True)
+st.write("Upload a DOCX, auto-detect headers, split into chunks, and download as CSV.")
 
-# Font size controls (simplified)
-st.sidebar.header("📏 Font Size Settings")
-body_font_size = st.sidebar.slider("Body Text Font Size Threshold", 2, 40, 12)
-header_font_size = st.sidebar.slider("Header Font Size Threshold", 2, 40, 13)  # Single slider for all headers
-
-# Chunking controls
-st.sidebar.header("✂️ Chunking Settings")
-chunk_min = st.sidebar.slider("Min Chunk Size (words)", 150, 300, 200)
-chunk_max = st.sidebar.slider("Max Chunk Size (words)", 200, 400, 250)
-overlap_percent = st.sidebar.slider("Overlap %", 10, 30, 20)
-
-uploaded_file = st.file_uploader("Upload DOCX", type=["docx"])
 book_name = st.text_input("Book Name")
 author_name = st.text_input("Author Name")
 
-if uploaded_file and book_name and author_name:
-    try:
-        font_settings = {
-            'body_threshold': body_font_size,
-            'header_threshold': header_font_size,  # Unified for simplicity
-            'enable_auto_detect': enable_auto_detect,
-            'enable_centered': enable_centered
-        }
-        
-        text, structure = parse_file_advanced(uploaded_file, font_settings)
-        
-        paragraphs = [item["text"] for item in structure if item["type"] == "body"]
-        all_headers = [item["text"] for item in structure if item["type"].startswith("header")]
-        
-        # Display stats
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("Detected Headers", len(all_headers))
-        with col2:
-            st.metric("Paragraphs", len(paragraphs))
-        
-        # Debug preview
-        if st.checkbox("🔍 Show Detected Headers"):
-            for h in all_headers:
-                st.write(f"- {h}")
-        
-        if st.checkbox("📋 Show Structure Preview"):
-            for item in structure[:20]:
-                if item['type'].startswith("header"):
-                    st.write(f"**Header:** {item['text']}")
-                else:
-                    st.write(f"Body: {item['text'][:100]}...")
+auto_detect = st.checkbox("Enable Auto-Detect Headers", value=True)
+font_size_threshold = st.slider("Header Font Size Threshold", 8, 20, 13)
+min_words = st.slider("Min Words per Chunk", 50, 500, 200)
+max_words = st.slider("Max Words per Chunk", 100, 500, 250)
+overlap = st.slider("Chunk Overlap (%)", 0, 50, 20) / 100
 
-        if st.button("🚀 Chunk and Download CSV"):
-            chunk_settings = {
-                'chunk_min': chunk_min,
-                'chunk_max': chunk_max,
-                'overlap_ratio': overlap_percent / 100
-            }
-            
-            chunks = improved_chunk_text_sentences(
-                paragraphs, book_name, author_name, 
-                all_headers, chunk_settings
-            )
-            
-            df = pd.DataFrame(chunks)
-            csv = df.to_csv(index=False)
-            st.download_button(
-                label="📥 Download CSV",
-                data=csv,
-                file_name=f"{book_name}_chunks.csv",
-                mime="text/csv"
-            )
-            
-            st.success(f"Created {len(chunks)} chunks!")
-            st.write("**Unique Chapters:**", ", ".join(df['chapter_name'].unique()))
-            st.dataframe(df.head())
-            
-    except Exception as e:
-        st.error(f"Error: {str(e)}")
+uploaded_file = st.file_uploader("Upload DOCX file", type=["docx"])
 
-# Help section
-with st.expander("ℹ️ Quick Fix Tips"):
-    st.write("""
-    - **Enable Auto-Detection**: This catches subtle headers like bold/short lines.
-    - **Lower Header Threshold**: Set to 12-13 if headers aren't bigger than body text.
-    - **Check Previews**: Use the checkboxes to verify detection before chunking.
-    - **Test with Your File**: Your DOCX has bold ALL-CAPS headers—auto-detect should catch them now.
-    """)
+if uploaded_file:
+    st.subheader("Step 1: Preview Detected Headers")
+    parsed_content = detect_headers_and_text(
+        uploaded_file,
+        font_size_threshold=font_size_threshold,
+        auto_detect=auto_detect
+    )
+
+    headers_preview = [item["text"] for item in parsed_content if item["type"] == "header"]
+    st.write("**Detected Headers:**", headers_preview)
+
+    if st.button("Generate CSV"):
+        df = create_csv_data(parsed_content, book_name, author_name, min_words, max_words, overlap)
+
+        csv_buffer = BytesIO()
+        df.to_csv(csv_buffer, index=False)
+        csv_buffer.seek(0)
+
+        st.download_button(
+            label="Download CSV",
+            data=csv_buffer,
+            file_name="output.csv",
+            mime="text/csv"
+        )
+
+        st.success(f"CSV generated with {len(df)} chunks.")
