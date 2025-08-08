@@ -1,7 +1,4 @@
 streamlit
 python-docx
 pymupdf
-openai
-sentence-transformers
 pandas
-schedule
