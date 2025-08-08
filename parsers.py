@@ -11,6 +11,10 @@ def parse_file_advanced(uploaded_file, font_settings):
     header1_threshold = font_settings['header1_threshold']
     header2_threshold = font_settings['header2_threshold'] 
     header3_threshold = font_settings['header3_threshold']
+    enable_header1 = font_settings['enable_header1']
+    enable_header2 = font_settings['enable_header2']
+    enable_header3 = font_settings['enable_header3']
+    enable_centered = font_settings['enable_centered']
 
     if uploaded_file.type == "application/pdf":
         doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
@@ -22,15 +26,16 @@ def parse_file_advanced(uploaded_file, font_settings):
                 if not block_text:
                     continue
                     
-                font_size = block[1] - block[2]  # Approximate size
-                is_bold = "bold" in block[3].lower()
-                is_centered = abs(block - block[4]) < 100
+                font_size = block[3] - block[1]  # Approximate size
+                is_bold = "bold" in block[1].lower()
+                is_centered = abs(block - block[2]) < 100
                 word_count = len(block_text.split())
                 
                 # Determine structure type based on font size and formatting
                 structure_type = classify_text_type(
                     font_size, is_bold, is_centered, word_count,
-                    body_threshold, header1_threshold, header2_threshold, header3_threshold
+                    body_threshold, header1_threshold, header2_threshold, header3_threshold,
+                    enable_header1, enable_header2, enable_header3, enable_centered
                 )
                 
                 if re.match(r"^\[\d+\]", block_text):  # Footnote
@@ -55,7 +60,8 @@ def parse_file_advanced(uploaded_file, font_settings):
             # Determine structure type
             structure_type = classify_text_type(
                 avg_font_size, is_bold, is_centered, word_count,
-                body_threshold, header1_threshold, header2_threshold, header3_threshold
+                body_threshold, header1_threshold, header2_threshold, header3_threshold,
+                enable_header1, enable_header2, enable_header3, enable_centered
             )
             
             if re.match(r"^\[\d+\]", para.text):  # Footnote
@@ -75,22 +81,24 @@ def parse_file_advanced(uploaded_file, font_settings):
     return text, structure
 
 def classify_text_type(font_size, is_bold, is_centered, word_count, 
-                      body_threshold, header1_threshold, header2_threshold, header3_threshold):
-    """Classify text as header1, header2, header3, or body based on formatting"""
+                      body_threshold, header1_threshold, header2_threshold, header3_threshold,
+                      enable_header1, enable_header2, enable_header3, enable_centered):
+    """Classify text as header1, header2, header3, or body based on formatting and enabled options"""
     
     # Short text with special formatting is likely a header
-    is_header_like = (is_bold or is_centered or word_count < 15)
+    is_header_like = (is_bold or (is_centered and enable_centered) or word_count < 15)
     
-    if font_size >= header1_threshold and is_header_like:
+    # Check each header level if enabled
+    if enable_header1 and font_size >= header1_threshold and is_header_like:
         return "header1"
-    elif font_size >= header2_threshold and is_header_like:
+    elif enable_header2 and font_size >= header2_threshold and is_header_like:
         return "header2"  
-    elif font_size >= header3_threshold and is_header_like:
+    elif enable_header3 and font_size >= header3_threshold and is_header_like:
         return "header3"
     elif font_size <= body_threshold or not is_header_like:
         return "body"
     else:
-        return "body"  # Default to body if unclear
+        return "body"  # Default to body if no header rules match
 
 # Keep the old function for backward compatibility
 def parse_file(uploaded_file, body_threshold=12, heading_threshold=14):
@@ -98,6 +106,10 @@ def parse_file(uploaded_file, body_threshold=12, heading_threshold=14):
         'body_threshold': body_threshold,
         'header1_threshold': heading_threshold + 4,
         'header2_threshold': heading_threshold + 2,
-        'header3_threshold': heading_threshold
+        'header3_threshold': heading_threshold,
+        'enable_header1': True,
+        'enable_header2': True,
+        'enable_header3': True,
+        'enable_centered': True
     }
     return parse_file_advanced(uploaded_file, font_settings)
