@@ -2,54 +2,102 @@ from docx import Document
 import fitz
 import re
 
-def parse_file(uploaded_file, body_threshold=12, heading_threshold=14):
+def parse_file_advanced(uploaded_file, font_settings):
     text = ""
-    structure = []  # List with types and text
-    footnotes = {}  # Dict for endnotes
+    structure = []
+    footnotes = {}
+    
+    body_threshold = font_settings['body_threshold']
+    header1_threshold = font_settings['header1_threshold']
+    header2_threshold = font_settings['header2_threshold'] 
+    header3_threshold = font_settings['header3_threshold']
 
     if uploaded_file.type == "application/pdf":
         doc = fitz.open(stream=uploaded_file.read(), filetype="pdf")
+        
         for page in doc:
             blocks = page.get_text("blocks")
             for block in blocks:
                 block_text = block[4].strip()
-                font_size = block[3] - block[1]  # Approx size
-                is_bold = "bold" in block[5]  # Check font flags
-                is_centered = abs(block[0] - block[2]) < 100  # Rough centering
-                if (font_size > heading_threshold or is_bold or is_centered or len(block_text.split()) < 20 or re.match(r"Chapter|Section", block_text)):
-                    structure_type = "chapter" if "Chapter" in block_text else "subchapter" if re.match(r"\d+\.\d+", block_text) else "heading"
-                    structure.append({"type": structure_type, "text": block_text})
-                elif re.match(r"^\[\d+\]", block_text):  # Footnote detection
+                if not block_text:
+                    continue
+                    
+                font_size = block[1] - block[2]  # Approximate size
+                is_bold = "bold" in block[3].lower()
+                is_centered = abs(block - block[4]) < 100
+                word_count = len(block_text.split())
+                
+                # Determine structure type based on font size and formatting
+                structure_type = classify_text_type(
+                    font_size, is_bold, is_centered, word_count,
+                    body_threshold, header1_threshold, header2_threshold, header3_threshold
+                )
+                
+                if re.match(r"^\[\d+\]", block_text):  # Footnote
                     num = re.findall(r"\d+", block_text)[0]
                     footnotes[num] = block_text
-                elif font_size <= body_threshold:
-                    structure.append({"type": "body", "text": block_text})
-        text = " ".join([item["text"] for item in structure])
-    
+                else:
+                    structure.append({"type": structure_type, "text": block_text})
+
     else:  # DOCX
         doc = Document(uploaded_file)
-        current_chapter = ""
+        
         for para in doc.paragraphs:
-            is_bold = any(run.bold for run in para.runs)
-            font_size = max((run.font.size.pt for run in para.runs if run.font.size), default=12)
+            if not para.text.strip():
+                continue
+                
+            is_bold = any(run.bold for run in para.runs if run.bold is not None)
+            font_sizes = [run.font.size.pt for run in para.runs if run.font.size is not None]
+            avg_font_size = sum(font_sizes) / len(font_sizes) if font_sizes else 12
             is_centered = para.alignment == 1  # WD_ALIGN_PARAGRAPH.CENTER
-            if para.style.name.startswith("Heading") or (is_bold and font_size > heading_threshold) or len(para.text.split()) < 20:
-                if "Chapter" in para.text:
-                    current_chapter = para.text
-                    structure.append({"type": "chapter", "text": para.text})
-                else:
-                    structure.append({"type": "subchapter", "text": para.text, "parent": current_chapter})
-            elif re.match(r"^\[\d+\]", para.text):  # Footnote
+            word_count = len(para.text.split())
+            
+            # Determine structure type
+            structure_type = classify_text_type(
+                avg_font_size, is_bold, is_centered, word_count,
+                body_threshold, header1_threshold, header2_threshold, header3_threshold
+            )
+            
+            if re.match(r"^\[\d+\]", para.text):  # Footnote
                 num = re.findall(r"\d+", para.text)[0]
                 footnotes[num] = para.text
-            elif font_size <= body_threshold:
-                structure.append({"type": "body", "text": para.text, "parent": current_chapter})
-        text = " ".join([item["text"] for item in structure])
+            else:
+                structure.append({"type": structure_type, "text": para.text})
+
+    text = " ".join([item["text"] for item in structure])
     
     # Link footnotes to structure
     for item in structure:
         for num, ref in footnotes.items():
             if f"[{num}]" in item.get("text", ""):
                 item["footnote"] = ref
-    
+
     return text, structure
+
+def classify_text_type(font_size, is_bold, is_centered, word_count, 
+                      body_threshold, header1_threshold, header2_threshold, header3_threshold):
+    """Classify text as header1, header2, header3, or body based on formatting"""
+    
+    # Short text with special formatting is likely a header
+    is_header_like = (is_bold or is_centered or word_count < 15)
+    
+    if font_size >= header1_threshold and is_header_like:
+        return "header1"
+    elif font_size >= header2_threshold and is_header_like:
+        return "header2"  
+    elif font_size >= header3_threshold and is_header_like:
+        return "header3"
+    elif font_size <= body_threshold or not is_header_like:
+        return "body"
+    else:
+        return "body"  # Default to body if unclear
+
+# Keep the old function for backward compatibility
+def parse_file(uploaded_file, body_threshold=12, heading_threshold=14):
+    font_settings = {
+        'body_threshold': body_threshold,
+        'header1_threshold': heading_threshold + 4,
+        'header2_threshold': heading_threshold + 2,
+        'header3_threshold': heading_threshold
+    }
+    return parse_file_advanced(uploaded_file, font_settings)
