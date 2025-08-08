@@ -26,19 +26,18 @@ def parse_file_advanced(uploaded_file, font_settings):
                 if not block_text:
                     continue
                     
-                font_size = block[3] - block[1]  # Approximate size
-                is_bold = "bold" in block[1].lower()
+                font_size = block[3] - block[1]
+                is_bold = "bold" in block[4].lower()
                 is_centered = abs(block - block[2]) < 100
                 word_count = len(block_text.split())
                 
-                # Determine structure type based on font size and formatting
-                structure_type = classify_text_type(
-                    font_size, is_bold, is_centered, word_count,
+                structure_type = classify_text_type_improved(
+                    block_text, font_size, is_bold, is_centered, word_count,
                     body_threshold, header1_threshold, header2_threshold, header3_threshold,
                     enable_header1, enable_header2, enable_header3, enable_centered
                 )
                 
-                if re.match(r"^\[\d+\]", block_text):  # Footnote
+                if re.match(r"^\[\d+\]", block_text):
                     num = re.findall(r"\d+", block_text)[0]
                     footnotes[num] = block_text
                 else:
@@ -48,27 +47,46 @@ def parse_file_advanced(uploaded_file, font_settings):
         doc = Document(uploaded_file)
         
         for para in doc.paragraphs:
-            if not para.text.strip():
+            para_text = para.text.strip()
+            if not para_text:
                 continue
                 
+            # Better font detection
             is_bold = any(run.bold for run in para.runs if run.bold is not None)
-            font_sizes = [run.font.size.pt for run in para.runs if run.font.size is not None]
-            avg_font_size = sum(font_sizes) / len(font_sizes) if font_sizes else 12
-            is_centered = para.alignment == 1  # WD_ALIGN_PARAGRAPH.CENTER
-            word_count = len(para.text.split())
             
-            # Determine structure type
-            structure_type = classify_text_type(
-                avg_font_size, is_bold, is_centered, word_count,
+            # Get all font sizes from runs
+            font_sizes = []
+            for run in para.runs:
+                if run.font.size is not None:
+                    font_sizes.append(run.font.size.pt)
+                elif run.font.name and any(word in run.font.name.lower() for word in ['heading', 'title']):
+                    font_sizes.append(16)  # Assume heading font
+                else:
+                    font_sizes.append(12)  # Default size
+            
+            avg_font_size = sum(font_sizes) / len(font_sizes) if font_sizes else 12
+            max_font_size = max(font_sizes) if font_sizes else 12
+            
+            # Check paragraph style
+            style_name = para.style.name.lower()
+            is_heading_style = 'heading' in style_name or 'title' in style_name
+            
+            is_centered = para.alignment == 1
+            word_count = len(para_text.split())
+            
+            # Use improved classification
+            structure_type = classify_text_type_improved(
+                para_text, max_font_size, is_bold, is_centered, word_count,
                 body_threshold, header1_threshold, header2_threshold, header3_threshold,
-                enable_header1, enable_header2, enable_header3, enable_centered
+                enable_header1, enable_header2, enable_header3, enable_centered,
+                is_heading_style
             )
             
-            if re.match(r"^\[\d+\]", para.text):  # Footnote
-                num = re.findall(r"\d+", para.text)[0]
-                footnotes[num] = para.text
+            if re.match(r"^\[\d+\]", para_text):
+                num = re.findall(r"\d+", para_text)[0]
+                footnotes[num] = para_text
             else:
-                structure.append({"type": structure_type, "text": para.text})
+                structure.append({"type": structure_type, "text": para_text})
 
     text = " ".join([item["text"] for item in structure])
     
@@ -80,25 +98,73 @@ def parse_file_advanced(uploaded_file, font_settings):
 
     return text, structure
 
-def classify_text_type(font_size, is_bold, is_centered, word_count, 
-                      body_threshold, header1_threshold, header2_threshold, header3_threshold,
-                      enable_header1, enable_header2, enable_header3, enable_centered):
-    """Classify text as header1, header2, header3, or body based on formatting and enabled options"""
+def classify_text_type_improved(text, font_size, is_bold, is_centered, word_count, 
+                              body_threshold, header1_threshold, header2_threshold, header3_threshold,
+                              enable_header1, enable_header2, enable_header3, enable_centered,
+                              is_heading_style=False):
+    """Improved classification with multiple detection methods"""
     
-    # Short text with special formatting is likely a header
-    is_header_like = (is_bold or (is_centered and enable_centered) or word_count < 15)
+    # Common header patterns
+    header_patterns = [
+        r'^[A-Z\s]{3,}$',  # ALL CAPS (3+ chars)
+        r'^Chapter\s+\d+',  # Chapter 1, Chapter 2, etc.
+        r'^CHAPTER\s+[IVX]+',  # CHAPTER I, CHAPTER II, etc.
+        r'^\d+\.\s*[A-Z]',  # 1. Something, 2. Something
+        r'^[A-Z][a-z]+\s+\d+',  # Article 1, Section 2, etc.
+        r'^FROM\s+THE\s+',  # FROM THE EDITOR, etc.
+        r'^[A-Z]{2,}\s+[A-Z]{2,}',  # Multiple words in caps
+    ]
     
-    # Check each header level if enabled
-    if enable_header1 and font_size >= header1_threshold and is_header_like:
-        return "header1"
-    elif enable_header2 and font_size >= header2_threshold and is_header_like:
-        return "header2"  
-    elif enable_header3 and font_size >= header3_threshold and is_header_like:
-        return "header3"
-    elif font_size <= body_threshold or not is_header_like:
-        return "body"
-    else:
-        return "body"  # Default to body if no header rules match
+    # Check if text matches header patterns
+    is_pattern_header = any(re.match(pattern, text) for pattern in header_patterns)
+    
+    # Multiple criteria for header detection
+    header_indicators = 0
+    
+    # Font-based indicators
+    if font_size >= header1_threshold: header_indicators += 3
+    elif font_size >= header2_threshold: header_indicators += 2
+    elif font_size >= header3_threshold: header_indicators += 1
+    
+    # Style-based indicators
+    if is_bold: header_indicators += 2
+    if is_centered and enable_centered: header_indicators += 2
+    if is_heading_style: header_indicators += 3
+    
+    # Content-based indicators
+    if is_pattern_header: header_indicators += 3
+    if word_count <= 10: header_indicators += 1
+    if word_count <= 5: header_indicators += 2
+    if text.isupper() and len(text) > 5: header_indicators += 2
+    
+    # Classification based on total score and enabled options
+    if header_indicators >= 5:
+        if enable_header1 and font_size >= header1_threshold:
+            return "header1"
+        elif enable_header2 and font_size >= header2_threshold:
+            return "header2"
+        elif enable_header3 and font_size >= header3_threshold:
+            return "header3"
+        elif enable_header1:
+            return "header1"  # Default to header1 if enabled
+        elif enable_header2:
+            return "header2"
+        elif enable_header3:
+            return "header3"
+    elif header_indicators >= 3:
+        if enable_header2 and font_size >= header2_threshold:
+            return "header2"
+        elif enable_header3 and font_size >= header3_threshold:
+            return "header3"
+        elif enable_header2:
+            return "header2"
+        elif enable_header3:
+            return "header3"
+    elif header_indicators >= 2:
+        if enable_header3:
+            return "header3"
+    
+    return "body"
 
 # Keep the old function for backward compatibility
 def parse_file(uploaded_file, body_threshold=12, heading_threshold=14):
