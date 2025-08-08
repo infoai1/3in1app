@@ -13,34 +13,44 @@ def improved_chunk_text_sentences(paragraphs, book_name, author_name, chapter_na
     chap_idx = 0
     in_chapter = chapter_names[chap_idx] if chapter_names else "Introduction"
     
-    current_text = ""  # Current chunk text
-    overlap_sentences = []  # Sentences for overlap
+    current_text = ""
+    overlap_sentences = []
     
     for para in paragraphs:
         para = para.strip()
         if not para:
             continue
             
-        # Check for chapter change
-        if chap_idx + 1 < len(chapter_names) and para == chapter_names[chap_idx + 1]:
-            # Save current chunk before chapter change
-            if current_text:
-                if overlap_sentences:
-                    final_text = " ".join(overlap_sentences) + " " + current_text
-                else:
-                    final_text = current_text
-                    
-                results.append({
-                    "book_name": book_name,
-                    "author_name": author_name,
-                    "chapter_name": in_chapter,
-                    "text_chunk": final_text.strip()
-                })
-            
-            chap_idx += 1
-            in_chapter = chapter_names[chap_idx]
-            current_text = ""
-            overlap_sentences = []
+        # Improved chapter detection - check if paragraph matches any chapter name
+        chapter_found = False
+        for i, chapter in enumerate(chapter_names):
+            # Exact match or partial match for long chapters
+            if (para == chapter or 
+                (len(chapter) > 20 and para in chapter) or
+                (len(para) > 20 and chapter in para)):
+                
+                # Save current chunk before chapter change
+                if current_text:
+                    if overlap_sentences:
+                        final_text = " ".join(overlap_sentences) + " " + current_text
+                    else:
+                        final_text = current_text
+                        
+                    results.append({
+                        "book_name": book_name,
+                        "author_name": author_name,
+                        "chapter_name": in_chapter,
+                        "text_chunk": final_text.strip()
+                    })
+                
+                chap_idx = i
+                in_chapter = chapter
+                current_text = ""
+                overlap_sentences = []
+                chapter_found = True
+                break
+        
+        if chapter_found:
             continue
         
         # Split paragraph into sentences
@@ -103,21 +113,15 @@ def improved_chunk_text_sentences(paragraphs, book_name, author_name, chapter_na
     return results
 
 def split_into_sentences(text):
-    """
-    Split text into sentences, handling Islamic text properly
-    """
-    # Common sentence endings
+    """Split text into sentences, handling Islamic text properly"""
     sentence_endings = r'[.!?؟۔]'
     
-    # Split by sentence endings
     sentences = re.split(f'({sentence_endings})', text)
     
-    # Rejoin sentences with their endings
     complete_sentences = []
     i = 0
     while i < len(sentences):
         if i + 1 < len(sentences) and re.match(sentence_endings, sentences[i + 1]):
-            # Combine sentence with its ending
             complete_sentences.append((sentences[i] + sentences[i + 1]).strip())
             i += 2
         else:
@@ -125,7 +129,6 @@ def split_into_sentences(text):
                 complete_sentences.append(sentences[i].strip())
             i += 1
     
-    # Filter out very short "sentences" (likely not real sentences)
     complete_sentences = [s for s in complete_sentences if len(s.split()) > 3]
     
     return complete_sentences
