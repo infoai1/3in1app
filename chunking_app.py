@@ -5,28 +5,19 @@ from chunker import improved_chunk_text_sentences
 
 st.title("Advanced Islamic Book Chunking App")
 
+# Font size controls
+st.sidebar.header("📏 Font Size Settings")
+body_font_size = st.sidebar.slider("Body Text Font Size", 2, 40, 12)
+header1_font_size = st.sidebar.slider("Header 1 Font Size", 2, 40, 16)  # Lower default
+header2_font_size = st.sidebar.slider("Header 2 Font Size", 2, 40, 14)  # Lower default
+header3_font_size = st.sidebar.slider("Header 3 Font Size", 2, 40, 13)  # Lower default
+
 # Header Detection Controls
 st.sidebar.header("🎯 Header Detection Settings")
 enable_header1 = st.sidebar.checkbox("Enable Header 1 Detection", value=True)
 enable_header2 = st.sidebar.checkbox("Enable Header 2 Detection", value=True)
 enable_header3 = st.sidebar.checkbox("Enable Header 3 Detection", value=True)
 enable_centered = st.sidebar.checkbox("Detect Centered Text as Headers", value=True)
-
-# Font size controls (unified range 2-40)
-st.sidebar.header("📏 Font Size Settings")
-body_font_size = st.sidebar.slider("Body Text Font Size", 2, 40, 12)
-
-# Only show header sliders if enabled
-header1_font_size = 18
-header2_font_size = 16  
-header3_font_size = 14
-
-if enable_header1:
-    header1_font_size = st.sidebar.slider("Header 1 Font Size", 2, 40, 18)
-if enable_header2:
-    header2_font_size = st.sidebar.slider("Header 2 Font Size", 2, 40, 16)
-if enable_header3:
-    header3_font_size = st.sidebar.slider("Header 3 Font Size", 2, 40, 14)
 
 # Chunking controls
 st.sidebar.header("✂️ Chunking Settings")
@@ -43,9 +34,9 @@ if uploaded_file and book_name and author_name:
         # Parse with custom font settings
         font_settings = {
             'body_threshold': body_font_size,
-            'header1_threshold': header1_font_size if enable_header1 else 999,
-            'header2_threshold': header2_font_size if enable_header2 else 999,
-            'header3_threshold': header3_font_size if enable_header3 else 999,
+            'header1_threshold': header1_font_size,
+            'header2_threshold': header2_font_size,
+            'header3_threshold': header3_font_size,
             'enable_header1': enable_header1,
             'enable_header2': enable_header2,
             'enable_header3': enable_header3,
@@ -71,26 +62,24 @@ if uploaded_file and book_name and author_name:
         with col4:
             st.metric("Paragraphs", len(paragraphs))
         
-        # Show which detection methods are active
-        active_methods = []
-        if enable_header1: active_methods.append("H1")
-        if enable_header2: active_methods.append("H2") 
-        if enable_header3: active_methods.append("H3")
-        if enable_centered: active_methods.append("Centered")
-        
-        st.info(f"🎯 Active Detection: {', '.join(active_methods) if active_methods else 'Body text only'}")
+        # DEBUG: Show all detected headers
+        if st.checkbox("🔍 Show ALL detected headers"):
+            st.write("**All Headers Found:**")
+            for item in structure:
+                if item['type'] in ['header1', 'header2', 'header3']:
+                    st.write(f"**{item['type'].upper()}:** {item['text']}")
         
         # Show structure preview
-        if st.checkbox("🔍 Show document structure"):
-            for item in structure[:15]:
+        if st.checkbox("📋 Show document structure (first 20 items)"):
+            for i, item in enumerate(structure[:20]):
                 if item['type'] == 'header1':
-                    st.write(f"# 📌 H1: {item['text'][:80]}...")
+                    st.write(f"{i+1}. **H1:** {item['text'][:80]}...")
                 elif item['type'] == 'header2':
-                    st.write(f"## 📍 H2: {item['text'][:80]}...")
+                    st.write(f"{i+1}. **H2:** {item['text'][:80]}...")
                 elif item['type'] == 'header3':
-                    st.write(f"### 📋 H3: {item['text'][:80]}...")
+                    st.write(f"{i+1}. **H3:** {item['text'][:80]}...")
                 else:
-                    st.write(f"📝 Body: {item['text'][:100]}...")
+                    st.write(f"{i+1}. Body: {item['text'][:60]}...")
         
         if st.button("🚀 Create Smart Chunks and Download CSV"):
             # Create chunks with sentence completion
@@ -105,6 +94,8 @@ if uploaded_file and book_name and author_name:
             if enable_header1: all_headers.extend(header1s)
             if enable_header2: all_headers.extend(header2s)
             if enable_header3: all_headers.extend(header3s)
+            
+            st.write(f"**Using {len(all_headers)} headers as chapter boundaries**")
             
             chunks = improved_chunk_text_sentences(
                 paragraphs, book_name, author_name, 
@@ -126,6 +117,10 @@ if uploaded_file and book_name and author_name:
             # Show stats
             st.success(f"✅ Created {len(chunks)} chunks with complete sentences!")
             
+            # Show unique chapter names found
+            unique_chapters = df['chapter_name'].unique()
+            st.write(f"**Unique chapters found:** {list(unique_chapters)}")
+            
             # Show chunk size distribution
             if chunks:
                 word_counts = [len(chunk['text_chunk'].split()) for chunk in chunks]
@@ -144,23 +139,18 @@ elif uploaded_file:
     st.warning("⚠️ Please enter both book name and author name")
 
 # Show help
-with st.expander("ℹ️ How Smart Chunking Works"):
+with st.expander("ℹ️ How to Fix Header Detection"):
     st.write("""
-    **Detection Controls:**
-    - ✅ **Enable/Disable Headers:** Choose which header levels to detect
-    - 🎯 **Centered Text:** Optional detection of centered text as headers
-    - 📏 **Unified Font Range:** All font sizes use same range (2-40)
+    **If headers aren't being detected:**
     
-    **Advanced Features:**
-    - **Complete Sentences:** Chunks never cut off mid-sentence
-    - **Multi-level Headers:** Detects Header1, Header2, Header3 by font size
-    - **Smart Overlapping:** Customizable overlap with complete sentences only
-    - **Chapter Boundaries:** Respects enabled header levels as boundaries
+    1. **Lower the font sizes** - Try Header1=14, Header2=13, Header3=12
+    2. **Check the debug info** - Use "Show ALL detected headers" to see what's found
+    3. **Look at document structure** - Use "Show document structure" to see classifications
+    4. **Enable all detection methods** - Check all the enable boxes
+    5. **Try different font thresholds** - Experiment with the sliders
     
-    **Font Size Logic:**
-    - Text >= Header1 size (if enabled) → Header 1
-    - Text >= Header2 size (if enabled) → Header 2  
-    - Text >= Header3 size (if enabled) → Header 3
-    - Text <= Body size → Body text
-    - Centered text detection can be toggled on/off
+    **Common issues:**
+    - Headers might be same font size as body text
+    - Headers might not be bold or centered
+    - Document might use styles instead of font formatting
     """)
